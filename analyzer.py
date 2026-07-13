@@ -15,6 +15,7 @@ from pypinyin import pinyin, Style
 import sys
 import os
 from scipy.special import softmax
+from huggingface_hub import hf_hub_download, login
 from tqdm import tqdm
 sys.path.append('charsiu/src/')
 from Charsiu import charsiu_forced_aligner
@@ -25,7 +26,8 @@ from sklearn.metrics import (
     confusion_matrix,
     classification_report,
 )
-
+HF_TOKEN=''
+login(HF_TOKEN)
 
 class _AudioMelDataset(Dataset):
     """
@@ -505,24 +507,23 @@ class WhisperTorchClassifier(nn.Module):
             'y_pred': y_pred,
         }
 class AudioAnalyzer():
-    def __init__(self, model_path='./models/model4.pth', service_folder='./results_wav'):
+    def __init__(self, model_path, service_folder):
+        model_path = hf_hub_download(repo_id="MaximBibikov228/Chin_whisper_phone", filename="model.pth")
         self.service_folder=service_folder
         self.device='cuda' if torch.cuda.is_available() else 'cpu'
         print(f'use device:{self.device}')
-        self.model=WhisperTorchClassifier()
         self.model=torch.load(
             model_path,
             weights_only=False,
-            map_location=self.device
+            map_location='cpu'
             )
-        self.num_workers=1
         self.model = self._move_whisper_classifier_to_device(self.model, self.device)
-        sys.path.append('charsiu/src/')
         self.model_parser=charsiu_forced_aligner(
             aligner='charsiu/zh_xlsr_fc_10ms',
             lang='zh',
             device=self.device         # <-- ключевое ускорение
         )
+        self.model.eval()
         os.makedirs(service_folder, exist_ok=True)
     def _split_to_initials_finals(self, text: str):
         """
