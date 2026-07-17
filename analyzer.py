@@ -93,7 +93,22 @@ class AudioAnalyzer():
         if audio.ndim > 1:
             audio = audio.mean(axis=1)
         times = self.model_parser.align(audio=audio, text=text)[0]
+
+        # Убираем паузы [SIL]
         times = [seg for seg in times if seg[2] != '[SIL]']
+        new_times=[]
+        i=0
+        while i<len(times):
+            if i<len(times)-1 and re.fullmatch(r'e[0-9]*', times[i][2]) and times[i+1][2]=='rr':
+                new_times.append((times[i][0], times[i+1][1], f'er{times[i][2][-1]}'))
+                i+=1
+            elif i<len(times)-1 and re.fullmatch(r'u[0-9]*', times[i][2]) and re.fullmatch(r'eng[0-9]*', times[i][2]):
+                new_times.append((times[i][0], times[i+1][1], f'ueng{times[i+1][2][-1]}'))
+                i+=1
+            else:
+                new_times.append((times[i][0], times[i][1], times[i][2].replace('iii', 'i').replace('iou', 'iu')))
+            i+=1
+        times=new_times.copy()
         phonem=self._split_to_initials_finals(text)
         n=len(times)
         init_names=[]
@@ -102,22 +117,22 @@ class AudioAnalyzer():
         audio_labels=dict()
         last=''
         for i in range(n):
-            if times[i][2]==last:
-                continue
             last=times[i][2]
             name = f"{self.service_folder.rstrip('/')}/clip_{i}.wav"
-            audio_labels[name]=last
             if last[-1] in '012345':
                 fin_names.append(name)
             else:
+                if last[0]==last[-1]:
+                    last=last[0]
                 init_names.append(name)
+            audio_labels[name]=last
             start_sample = int(times[i][0] * sr)
             end_sample   = int(times[i][1] * sr)
             clip = audio[start_sample:end_sample]
             names.append(name)
             sf.write(name, clip, sr)
         #print(init_names, self.model_init.class_names)
-        pred_init=predict(self.model_init, init_names, device=self.device, class_names=self.model_init.class_names, num_workers=0)
+        pred_init=predict(self.model_init, init_names, device=self.device, class_names=self.model_init.class_names)
         sum_init=0
         #print(pred_init)
         for name in init_names:
